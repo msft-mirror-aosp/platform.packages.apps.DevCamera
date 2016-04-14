@@ -1,4 +1,19 @@
-package com.google.snappy;
+/*
+ * Copyright (C) 2016 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.android.devcamera;
 
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraDevice;
@@ -11,11 +26,11 @@ import android.util.Log;
 /**
  * Static utility class that logs various camera2 callbacks.
  *
- * The only reason this exists as a separate class is void cluttering up MyApi2Camera.
+ * The only reason this exists as a separate class is void cluttering up Api2Camera.
  */
 
-public class MyLoggingCallbacks {
-    private static final String TAG = "SNAPPY_LOG2";
+public class LoggingCallbacks {
+    private static final String TAG = "DevCamera_LOG2";
     private static final Boolean LOG_EVERY_FRAME = false;
     private static final Boolean LOG_NON_ERRORS = false;
 

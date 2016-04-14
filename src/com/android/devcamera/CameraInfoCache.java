@@ -1,4 +1,19 @@
-package com.google.snappy;
+/*
+ * Copyright (C) 2016 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.android.devcamera;
 
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
@@ -16,7 +31,7 @@ import android.util.Size;
  */
 
 public class CameraInfoCache {
-    private static final String TAG = "SNAPPY_CAMINFO";
+    private static final String TAG = "DevCamera_CAMINFO";
 
     public static final boolean IS_NEXUS_5 = "hammerhead".equalsIgnoreCase(Build.DEVICE);
     public static final boolean IS_NEXUS_6 = "shamu".equalsIgnoreCase(Build.DEVICE);
@@ -100,8 +115,10 @@ public class CameraInfoCache {
         noiseModes = mCameraCharacteristics.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES);
 
         // Misc stuff.
-        mCamera2FullModeAvailable = mCameraCharacteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL) ==
-                CameraMetadata.INFO_SUPPORTED_HARDWARE_LEVEL_FULL;
+        int hwLevel = mCameraCharacteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
+
+        mCamera2FullModeAvailable = (hwLevel != CameraMetadata.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY)
+                && (hwLevel >= CameraMetadata.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
 
         mSensorOrientation = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
     }

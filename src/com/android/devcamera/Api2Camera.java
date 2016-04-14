@@ -1,4 +1,19 @@
-package com.google.snappy;
+/*
+ * Copyright (C) 2016 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.android.devcamera;
 
 import android.content.Context;
 import android.graphics.ImageFormat;
@@ -35,7 +50,7 @@ import javax.microedition.khronos.opengles.GL10;
 
 
 /**
- * MyApi2Camera : a camera2 implementation
+ * Api2Camera : a camera2 implementation
  *
  * The goal here is to make the simplest possible API2 camera,
  * where individual streams and capture options (e.g. edge enhancement,
@@ -43,8 +58,8 @@ import javax.microedition.khronos.opengles.GL10;
  *
  */
 
-public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAvailableListener {
-    private static final String TAG = "SNAPPY_API2";
+public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvailableListener {
+    private static final String TAG = "DevCamera_API2";
 
     // Nth frame to log; put 10^6 if you don't want logging.
     private static int LOG_NTH_FRAME = 30;
@@ -113,7 +128,7 @@ public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAv
     /**
      * Constructor.
      */
-    public MyApi2Camera(Context context, boolean useFrontCamera) {
+    public Api2Camera(Context context, boolean useFrontCamera) {
         mContext = context;
         mCameraIsFront = useFrontCamera;
         mCameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
@@ -286,7 +301,7 @@ public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAv
         mOpsHandler.post(new Runnable() {
             @Override
             public void run() {
-                MyTimer.t_open_start = SystemClock.elapsedRealtime();
+                CameraTimer.t_open_start = SystemClock.elapsedRealtime();
                 try {
                     mCameraManager.openCamera(mCameraInfoCache.getCameraId(), mCameraStateCallback, null);
                 } catch (CameraAccessException e) {
@@ -318,13 +333,13 @@ public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAv
         tryToStartCaptureSession();
     }
 
-    private CameraDevice.StateCallback mCameraStateCallback = new MyLoggingCallbacks.DeviceStateCallback() {
+    private CameraDevice.StateCallback mCameraStateCallback = new LoggingCallbacks.DeviceStateCallback() {
         @Override
         public void onOpened(CameraDevice camera) {
-            MyTimer.t_open_end = SystemClock.elapsedRealtime();
+            CameraTimer.t_open_end = SystemClock.elapsedRealtime();
             mCameraDevice = camera;
             Log.v(TAG, "STARTUP_REQUIREMENT Done opening camera " + mCameraInfoCache.getCameraId() +
-                    ". HAL open took: (" + (MyTimer.t_open_end - MyTimer.t_open_start) + " ms)");
+                    ". HAL open took: (" + (CameraTimer.t_open_end - CameraTimer.t_open_start) + " ms)");
 
             super.onOpened(camera);
             tryToStartCaptureSession();
@@ -345,7 +360,7 @@ public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAv
 
     // Create CameraCaptureSession. Callback will start repeating request with current parameters.
     private void startCaptureSession() {
-        MyTimer.t_session_go = SystemClock.elapsedRealtime();
+        CameraTimer.t_session_go = SystemClock.elapsedRealtime();
 
         Log.v(TAG, "Configuring session..");
         List<Surface> outputSurfaces = new ArrayList<Surface>(3);
@@ -400,10 +415,10 @@ public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAv
 
     ImageWriter mImageWriter;
 
-    private CameraCaptureSession.StateCallback mSessionStateCallback = new MyLoggingCallbacks.SessionStateCallback() {
+    private CameraCaptureSession.StateCallback mSessionStateCallback = new LoggingCallbacks.SessionStateCallback() {
         @Override
         public void onReady(CameraCaptureSession session) {
-            Log.v(TAG, "capture session onReady().  HAL capture session took: (" + (SystemClock.elapsedRealtime() - MyTimer.t_session_go) + " ms)");
+            Log.v(TAG, "capture session onReady().  HAL capture session took: (" + (SystemClock.elapsedRealtime() - CameraTimer.t_session_go) + " ms)");
             mCurrentCaptureSession = session;
             issuePreviewCaptureRequest(false);
 
@@ -469,7 +484,7 @@ public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAv
     }
 
     public void issuePreviewCaptureRequest(boolean AFtrigger) {
-        MyTimer.t_burst = SystemClock.elapsedRealtime();
+        CameraTimer.t_burst = SystemClock.elapsedRealtime();
         Log.v(TAG, "issuePreviewCaptureRequest...");
         try {
             CaptureRequest.Builder b1 = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
@@ -632,7 +647,7 @@ public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAv
                             final ByteBuffer buffer = plane0.getBuffer();
                             Log.v(TAG, "Raw buffer available, Frame #=" + mRawImageCounter + "w=" + img.getWidth()
                                     + " h=" + img.getHeight()
-                                    + " format=" + MyDeviceReport.getFormatName(img.getFormat())
+                                    + " format=" + CameraDeviceReport.getFormatName(img.getFormat())
                                     + " time=" + img.getTimestamp()
                                     + " size=" + buffer.capacity()
                                     + " getRowStride()=" + plane0.getRowStride());
@@ -646,15 +661,15 @@ public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAv
      * CaptureResult metadata processing *
      *************************************/
 
-    private CameraCaptureSession.CaptureCallback mCaptureCallback = new MyLoggingCallbacks.SessionCaptureCallback() {
+    private CameraCaptureSession.CaptureCallback mCaptureCallback = new LoggingCallbacks.SessionCaptureCallback() {
         @Override
         public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
             if (!mFirstFrameArrived) {
                 mFirstFrameArrived = true;
                 long now = SystemClock.elapsedRealtime();
-                long dt = now - MyTimer.t0;
-                long camera_dt = now - MyTimer.t_session_go + MyTimer.t_open_end - MyTimer.t_open_start;
-                long repeating_req_dt = now - MyTimer.t_burst;
+                long dt = now - CameraTimer.t0;
+                long camera_dt = now - CameraTimer.t_session_go + CameraTimer.t_open_end - CameraTimer.t_open_start;
+                long repeating_req_dt = now - CameraTimer.t_burst;
                 Log.v(TAG, "App control to first frame: (" + dt + " ms)");
                 Log.v(TAG, "HAL request to first frame: (" + repeating_req_dt + " ms) " + " Total HAL wait: (" + camera_dt + " ms)");
                 mMyCameraCallback.receivedFirstFrame();
@@ -668,7 +683,7 @@ public class MyApi2Camera implements MyCameraInterface, SurfaceTexture.OnFrameAv
     };
 
     // Reprocessing capture completed.
-    private CameraCaptureSession.CaptureCallback mReprocessingCaptureCallback = new MyLoggingCallbacks.SessionCaptureCallback() {
+    private CameraCaptureSession.CaptureCallback mReprocessingCaptureCallback = new LoggingCallbacks.SessionCaptureCallback() {
         @Override
         public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
             Log.v(TAG, "Reprocessing onCaptureCompleted()");

@@ -1,7 +1,25 @@
-package com.google.snappy;
+/*
+ * Copyright (C) 2016 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.android.devcamera;
 
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.hardware.camera2.CaptureResult;
 import android.hardware.SensorManager;
 import android.os.Bundle;
 import android.app.Activity;
@@ -28,13 +46,16 @@ import android.widget.ToggleButton;
  * A minimum camera app.
  * To keep it simple: portrait mode only.
  */
-public class MainActivity extends Activity implements MyCameraInterface.MyCameraCallback, SurfaceHolder.Callback {
-    private static final String TAG = "SNAPPY_UI";
+public class DevCameraActivity extends Activity implements CameraInterface.MyCameraCallback, SurfaceHolder.Callback {
+    private static final String TAG = "DevCamera_UI";
 
     private static final boolean LOG_FRAME_DATA = false;
     private static final int AF_TRIGGER_HOLD_MILLIS = 4000;
     private static final boolean STARTUP_FULL_YUV_ON = true;
     private static final boolean START_WITH_FRONT_CAMERA = false;
+
+    private static final int PERMISSIONS_REQUEST_CAMERA = 1;
+    private boolean mPermissionCheckActive = false;
 
     private SurfaceView mPreviewView;
     private SurfaceHolder mPreviewHolder;
@@ -58,7 +79,7 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
     private ToggleButton mToggleSaveSdCard;
     private LinearLayout mReprocessingGroup;
     private Handler mMainHandler;
-    private MyCameraInterface mCamera;
+    private CameraInterface mCamera;
 
     // Used for saving JPEGs.
     private HandlerThread mUtilityThread;
@@ -71,7 +92,7 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
             // set capture flow.
             if (view == mToggleYuvFull || view == mToggleYuvVga || view == mToggleRaw ||
                     view == mButtonNoiseMode || view == mButtonEdgeMode || view == mToggleFace || view == null)
-            mCamera.setCaptureFlow(
+                mCamera.setCaptureFlow(
                     mToggleYuvFull.isChecked(),
                     mToggleYuvVga.isChecked(),
                     mToggleRaw.isChecked(),
@@ -113,10 +134,12 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         Log.v(TAG, "onCreate");
-        MyTimer.t0 = SystemClock.elapsedRealtime();
+        CameraTimer.t0 = SystemClock.elapsedRealtime();
 
-        // Go speed racer.
-        openCamera(START_WITH_FRONT_CAMERA);
+        if (checkPermissions()) {
+            // Go speed racer.
+            openCamera(START_WITH_FRONT_CAMERA);
+        }
 
         // Initialize UI.
         setContentView(R.layout.activity_main);
@@ -173,7 +196,7 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
             @Override
             public void onClick(View view) {
                 Log.v(TAG, "switchCamera()");
-                MyTimer.t0 = SystemClock.elapsedRealtime();
+                CameraTimer.t0 = SystemClock.elapsedRealtime();
                 // ToggleButton isChecked state will determine which camera is started.
                 openCamera(mToggleFrontCam.isChecked());
                 startCamera();
@@ -195,16 +218,13 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
 
         mMainHandler = new Handler(this.getApplicationContext().getMainLooper());
 
-        // Can start camera now that we have the above initialized.
-        startCamera();
-
         // General utility thread for e.g. saving JPEGs.
         mUtilityThread = new HandlerThread("UtilityThread");
         mUtilityThread.start();
         mUtilityHandler = new Handler(mUtilityThread.getLooper());
 
         // --- PRINT REPORT ---
-        //MyDeviceReport.printReport(this, false);
+        //CameraDeviceReport.printReport(this, false);
         super.onCreate(savedInstanceState);
     }
 
@@ -215,7 +235,7 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
             mCamera.closeCamera();
         }
         // --- SET UP CAMERA ---
-        mCamera = new MyApi2Camera(this, frontCamera);
+        mCamera = new Api2Camera(this, frontCamera);
         mCamera.setCallback(this);
         mCamera.openCamera();
     }
@@ -253,8 +273,10 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
     @Override
     public synchronized void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         Log.v(TAG, String.format("surfaceChanged: format=%x w=%d h=%d", format, width, height));
-        mPreviewSurfaceValid = true;
-        mCamera.startPreview(mPreviewHolder.getSurface());
+        if (checkPermissions()) {
+            mPreviewSurfaceValid = true;
+            mCamera.startPreview(mPreviewHolder.getSurface());
+        }
     }
 
     Runnable mReturnToCafRunnable = new Runnable() {
@@ -283,24 +305,75 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
     }
 
     @Override
-    public void onResume() {
-        Log.v(TAG, "onResume");
-        super.onResume();
+    public void onStart() {
+        Log.v(TAG, "onStart");
+        super.onStart();
         // Leave screen on.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        if (!checkPermissions()) return;
+
+        // Can start camera now that we have the above initialized.
+        if (mCamera == null) {
+            openCamera(mToggleFrontCam.isChecked());
+        }
+        startCamera();
+    }
+
+    private boolean checkPermissions() {
+        if (mPermissionCheckActive) return false;
+
+        // Check for all runtime permissions
+        if ((checkSelfPermission(Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED )
+            || (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED)
+            || (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED)) {
+            Log.i(TAG, "Requested camera/video permissions");
+            requestPermissions(new String[] {
+                        Manifest.permission.CAMERA,
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    PERMISSIONS_REQUEST_CAMERA);
+            mPermissionCheckActive = true;
+            return false;
+        }
+
+        return true;
     }
 
     @Override
-    public void onPause() {
-        Log.v(TAG, "onPause");
-        mCamera.closeCamera();
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            int[] grantResults) {
+        mPermissionCheckActive = false;
+        if (requestCode == PERMISSIONS_REQUEST_CAMERA) {
+            for (int i = 0; i < grantResults.length; i++) {
+                if (grantResults[i] == PackageManager.PERMISSION_DENIED) {
+                    Log.i(TAG, "At least one permission denied, can't continue: " + permissions[i]);
+                    finish();
+                    return;
+                }
+            }
+
+            Log.i(TAG, "All permissions granted");
+            openCamera(mToggleFrontCam.isChecked());
+            startCamera();
+        }
+    }
+
+    @Override
+    public void onStop() {
+        Log.v(TAG, "onStop");
+        if (mCamera != null) {
+            mCamera.closeCamera();
+            mCamera = null;
+        }
 
         // Cancel any pending AF operations.
         mMainHandler.removeCallbacks(mReturnToCafRunnable);
         stopGyroDisplay(); // No-op if not running.
-        super.onPause();
-        // Close app.
-        finish();
+        super.onStop();
     }
 
     public void noCamera2Full() {
@@ -395,9 +468,9 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
             }
         });
         // Build info string.
-        String ae = aeModeToString(aeState);
-        String af = afModeToString(afState);
-        String awb = awbModeToString(awbState);
+        String ae = aeStateToString(aeState);
+        String af = afStateToString(afState);
+        String awb = awbStateToString(awbState);
         final String info = String.format(" %2.0f FPS%5d ISO  AF:%s AE:%s AWB:%s", fps, iso, af, ae, awb);
         mLastInfo = info;
 
@@ -513,33 +586,59 @@ public class MainActivity extends Activity implements MyCameraInterface.MyCamera
      * UTILITY FUNCTIONS *
      *********************/
 
-    private static String awbModeToString(int mode) {
+    private static String awbStateToString(int mode) {
         switch (mode) {
-            case 1:
-                return "scan";
-            case 2:
+            case CaptureResult.CONTROL_AWB_STATE_INACTIVE:
+                return "inactive";
+            case CaptureResult.CONTROL_AWB_STATE_SEARCHING:
+                return "searching";
+            case CaptureResult.CONTROL_AWB_STATE_CONVERGED:
+                return "converged";
+            case CaptureResult.CONTROL_AWB_STATE_LOCKED:
                 return "lock";
+            default:
+                return "unknown " + Integer.toString(mode);
         }
-        return Integer.toString(mode);
     }
 
-    private static String aeModeToString(int mode) {
+    private static String aeStateToString(int mode) {
         switch (mode) {
-            case 1:
-                return "scan";
-            case 2:
+            case CaptureResult.CONTROL_AE_STATE_INACTIVE:
+                return "inactive";
+            case CaptureResult.CONTROL_AE_STATE_SEARCHING:
+                return "searching";
+            case CaptureResult.CONTROL_AE_STATE_PRECAPTURE:
+                return "precapture";
+            case CaptureResult.CONTROL_AE_STATE_CONVERGED:
+                return "converged";
+            case CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED:
+                return "flashReq";
+            case CaptureResult.CONTROL_AE_STATE_LOCKED:
                 return "lock";
+            default:
+                return "unknown " + Integer.toString(mode);
         }
-        return Integer.toString(mode);
     }
 
-    private static String afModeToString(int mode) {
-        /* switch (mode) {
-            case 1: return "scan";
-            case 2: return "good";
-            case 6: return "bad";
-        } */
-        return Integer.toString(mode);
+    private static String afStateToString(int mode) {
+        switch (mode) {
+            case CaptureResult.CONTROL_AF_STATE_INACTIVE:
+                return "inactive";
+            case CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN:
+                return "passiveScan";
+            case CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED:
+                return "passiveFocused";
+            case CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED:
+                return "passiveUnfocused";
+            case CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN:
+                return "activeScan";
+            case CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED:
+                return "focusedLock";
+            case CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED:
+                return "notFocusedLock";
+            default:
+                return "unknown" + Integer.toString(mode);
+        }
     }
 
 }

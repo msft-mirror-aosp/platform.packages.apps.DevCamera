@@ -1,4 +1,19 @@
-package com.google.snappy;
+/*
+ * Copyright (C) 2016 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.android.devcamera;
 
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -9,12 +24,10 @@ import android.util.Log;
 import java.util.ArrayDeque;
 
 /**
- * Created by andyhuibers on 7/21/15.
- *
  * Put all the Gyro stuff here.
  */
 public class GyroOperations {
-    private static final String TAG = "SNAPPY_GYRO";
+    private static final String TAG = "DevCamera_GYRO";
 
     private SensorManager mSensorManager;
     private GyroListener mListener;

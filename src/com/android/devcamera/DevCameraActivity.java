@@ -19,6 +19,7 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.SensorManager;
 import android.os.Bundle;
@@ -538,12 +539,11 @@ public class DevCameraActivity extends Activity implements CameraInterface.MyCam
     GyroOperations mGyroOperations;
 
     private void startGyroDisplay() {
-        // TODO: Get field of view angles from Camera API.
-        // TODO: Consider turning OIS off.
-        float fovLargeDegrees = 62.7533f; // Nexus 6
-        float fovSmallDegrees = 49.157f; // Nexus 6
-        mPreviewOverlay.setFieldOfView(fovLargeDegrees, fovSmallDegrees);
 
+        float[] fovs = mCamera.getFieldOfView();
+        mPreviewOverlay.setFieldOfView(fovs[0], fovs[1]);
+        mPreviewOverlay.setFacing(mToggleFrontCam.isChecked() ?
+                CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK);
         if (mGyroOperations == null) {
             SensorManager sensorManager = (SensorManager) getSystemService(this.SENSOR_SERVICE);
             mGyroOperations = new GyroOperations(sensorManager);

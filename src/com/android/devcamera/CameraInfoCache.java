@@ -24,6 +24,7 @@ import android.hardware.camera2.params.StreamConfigurationMap;
 import android.os.Build;
 import android.util.Log;
 import android.util.Size;
+import android.util.SizeF;
 
 /**
  * Caches (static) information about the first/main camera.
@@ -33,13 +34,7 @@ import android.util.Size;
 public class CameraInfoCache {
     private static final String TAG = "DevCamera_CAMINFO";
 
-    public static final boolean IS_NEXUS_5 = "hammerhead".equalsIgnoreCase(Build.DEVICE);
     public static final boolean IS_NEXUS_6 = "shamu".equalsIgnoreCase(Build.DEVICE);
-    public static final boolean IS_NEXUS_9 = "flounder".equalsIgnoreCase(Build.DEVICE);
-    public static final boolean IS_ANGLER = "angler".equalsIgnoreCase(Build.DEVICE);
-    public static final boolean IS_BULLHEAD = "bullhead".equalsIgnoreCase(Build.DEVICE);
-    public static final boolean IS_SAMSUNG_S6 = "zerofltevzw".equalsIgnoreCase(Build.DEVICE);
-    public static final boolean IS_LG_G4 = "p1_lgu_kr".equalsIgnoreCase(Build.PRODUCT);
 
     public int[] noiseModes;
     public int[] edgeModes;
@@ -53,7 +48,7 @@ public class CameraInfoCache {
     private Integer mSensorOrientation;
     private Integer mRawFormat;
     private int mBestFaceMode;
-    private boolean mCamera2FullModeAvailable;
+    private int mHardwareLevel;
 
     /**
      * Constructor.
@@ -115,12 +110,16 @@ public class CameraInfoCache {
         noiseModes = mCameraCharacteristics.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES);
 
         // Misc stuff.
-        int hwLevel = mCameraCharacteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
-
-        mCamera2FullModeAvailable = (hwLevel != CameraMetadata.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY)
-                && (hwLevel >= CameraMetadata.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        mHardwareLevel = mCameraCharacteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
 
         mSensorOrientation = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+    }
+
+    boolean supportedModesContains(int[] modes, int mode) {
+        for (int m : modes) {
+            if (m == mode) return true;
+        }
+        return false;
     }
 
     public int sensorOrientation() {
@@ -128,23 +127,73 @@ public class CameraInfoCache {
     }
 
     public boolean isCamera2FullModeAvailable() {
-        return mCamera2FullModeAvailable;
+        return isHardwareLevelAtLeast(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+    }
+
+    public boolean isHardwareLevelAtLeast(int level) {
+        // Special-case LEGACY since it has numerical value 2
+        if (level == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY) {
+            // All devices are at least LEGACY
+            return true;
+        }
+        if (mHardwareLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY) {
+            // Since level isn't LEGACY
+            return false;
+        }
+        // All other levels can be compared numerically
+        return mHardwareLevel >= level;
+    }
+
+    public boolean isCapabilitySupported(int capability) {
+        int[] caps = mCameraCharacteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
+        for (int c: caps) {
+            if (c == capability) return true;
+        }
+        return false;
     }
 
     public float getDiopterLow() {
-        if (IS_NEXUS_6) {
-            return 0f;
-        }
         return 0f; // Infinity
     }
 
     public float getDiopterHi() {
-        if (IS_NEXUS_6) {
-            return 14.29f;
-        }
-        return 16f;
+        Float minFocusDistance =
+                mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+        // LEGACY devices don't report this, but they won't report focus distance anyway, so just
+        // default to zero
+        return (minFocusDistance == null) ? 0.0f : minFocusDistance;
     }
 
+    /**
+     * Calculate camera device horizontal and vertical fields of view.
+     *
+     * @return horizontal and vertical field of view, in degrees.
+     */
+    public float[] getFieldOfView() {
+        float[] availableFocalLengths =
+                mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+        float focalLength = 4.5f; // mm, default from Nexus 6P
+        if (availableFocalLengths == null || availableFocalLengths.length == 0) {
+            Log.e(TAG, "No focal length reported by camera device, assuming default " +
+                    focalLength);
+        } else {
+            focalLength = availableFocalLengths[0];
+        }
+        SizeF physicalSize =
+                mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+        if (physicalSize == null) {
+            physicalSize = new SizeF(6.32f, 4.69f); // mm, default from Nexus 6P
+            Log.e(TAG, "No physical sensor dimensions reported by camera device, assuming default "
+                    + physicalSize);
+        }
+        // Simple rectilinear lens field of view formula:
+        //   angle of view = 2 * arctan ( sensor size / (2 * focal length) )
+        float[] fieldOfView = new float[2];
+        fieldOfView[0] = (float) Math.toDegrees(2 * Math.atan(physicalSize.getWidth() / 2 / focalLength));
+        fieldOfView[1] = (float) Math.toDegrees(2 * Math.atan(physicalSize.getHeight() / 2 / focalLength));
+
+        return fieldOfView;
+    }
     /**
      * Private utility function.
      */
@@ -194,7 +243,8 @@ public class CameraInfoCache {
         if (aspect > 1.6) {
             return new Size(1920, 1080); // TODO: Check available resolutions.
         }
-        if (IS_ANGLER || IS_BULLHEAD) {
+        if (isHardwareLevelAtLeast(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_3)) {
+            // Bigger preview size for more advanced devices
             return new Size(1440, 1080);
         }
         return new Size(1280, 960); // TODO: Check available resolutions.
@@ -215,9 +265,9 @@ public class CameraInfoCache {
     public boolean rawAvailable() {
         return mRawSize != null;
     }
-    public boolean reprocessingAvailable() {
-        // TODO: Actually query capabilities list.
-        return (IS_ANGLER || IS_BULLHEAD);
+    public boolean isYuvReprocessingAvailable() {
+        return isCapabilitySupported(
+                CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_YUV_REPROCESSING);
     }
 
     public Integer getRawFormat() {

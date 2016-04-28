@@ -542,8 +542,9 @@ public class DevCameraActivity extends Activity implements CameraInterface.MyCam
 
         float[] fovs = mCamera.getFieldOfView();
         mPreviewOverlay.setFieldOfView(fovs[0], fovs[1]);
-        mPreviewOverlay.setFacing(mToggleFrontCam.isChecked() ?
-                CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK);
+        mPreviewOverlay.setFacingAndOrientation(mToggleFrontCam.isChecked() ?
+                CameraCharacteristics.LENS_FACING_FRONT : CameraCharacteristics.LENS_FACING_BACK,
+                mCamera.getOrientation());
         if (mGyroOperations == null) {
             SensorManager sensorManager = (SensorManager) getSystemService(this.SENSOR_SERVICE);
             mGyroOperations = new GyroOperations(sensorManager);

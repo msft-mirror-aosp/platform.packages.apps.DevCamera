@@ -186,11 +186,21 @@ public class CameraInfoCache {
             Log.e(TAG, "No physical sensor dimensions reported by camera device, assuming default "
                     + physicalSize);
         }
+
+        // Only active array is actually visible, so calculate fraction of physicalSize that it takes up
+        Size pixelArraySize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE);
+        Rect activeArraySize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+
+        float activeWidthFraction = activeArraySize.width() / (float) pixelArraySize.getWidth();
+        float activeHeightFraction = activeArraySize.height() / (float) pixelArraySize.getHeight();
+
         // Simple rectilinear lens field of view formula:
-        //   angle of view = 2 * arctan ( sensor size / (2 * focal length) )
+        //   angle of view = 2 * arctan ( active size / (2 * focal length) )
         float[] fieldOfView = new float[2];
-        fieldOfView[0] = (float) Math.toDegrees(2 * Math.atan(physicalSize.getWidth() / 2 / focalLength));
-        fieldOfView[1] = (float) Math.toDegrees(2 * Math.atan(physicalSize.getHeight() / 2 / focalLength));
+        fieldOfView[0] = (float) Math.toDegrees(
+                2 * Math.atan(physicalSize.getWidth() * activeWidthFraction / 2 / focalLength));
+        fieldOfView[1] = (float) Math.toDegrees(
+                2 * Math.atan(physicalSize.getHeight() * activeHeightFraction / 2 / focalLength));
 
         return fieldOfView;
     }

@@ -43,7 +43,10 @@ public class PreviewOverlay extends View {
     private float mFovLargeDegrees;
     private float mFovSmallDegrees;
     private int mFacing = CameraCharacteristics.LENS_FACING_BACK;
+    private int mOrientation = 0;  // degrees
+
     float[] mAngles = new float[2];
+
 
     public PreviewOverlay(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -75,8 +78,9 @@ public class PreviewOverlay extends View {
      * Set the facing of the current camera, for correct coordinate mapping.
      * One of the CameraCharacteristics.LENS_INFO_FACING_* constants
      */
-    public void setFacing(int facing) {
+    public void setFacingAndOrientation(int facing, int orientation) {
         mFacing = facing;
+        mOrientation = orientation;
     }
 
     public void show3AInfo(boolean show) {
@@ -86,13 +90,39 @@ public class PreviewOverlay extends View {
     }
 
     public void setGyroAngles(float[] angles) {
-        if (mFacing == CameraCharacteristics.LENS_FACING_BACK) {
+        boolean front = (mFacing == CameraCharacteristics.LENS_FACING_BACK);
+        // Rotate gyro coordinates to match camera orientation
+        // Gyro data is always presented in the device native coordinate system, which
+        // is either portrait or landscape depending on device.
+        // (http://developer.android.com/reference/android/hardware/SensorEvent.html)
+        // DevCamera locks itself to portrait, and the camera sensor long edge is always aligned
+        // with the long edge of the device.
+        // mOrientation is the relative orientation of the camera sensor and the device native
+        // orientation, so it can be used to decide if the gyro data is meant to be interpreted
+        // in landscape or portrait and flip coordinates/sign accordingly.
+        // Additionally, front-facing cameras are mirrored, so an additional sign flip is needed.
+        switch (mOrientation) {
+            case 0:
+                mAngles[1] = -angles[0];
+                mAngles[0] = angles[1];
+                break;
+            case 90:
+                mAngles[0] = angles[0];
+                mAngles[1] = angles[1];
+                break;
+            case 180:
+                mAngles[1] = -angles[0];
+                mAngles[0] = angles[1];
+                break;
+            case 270:
+                mAngles[0] = angles[0];
+                mAngles[1] = angles[1];
+                break;
+        }
+        if (mFacing != CameraCharacteristics.LENS_FACING_BACK) {
             // Reverse sensor readout for front/external facing cameras
-            mAngles[0] = angles[0];
-            mAngles[1] = angles[1];
-        } else {
-            mAngles[0] = -angles[0];
-            mAngles[1] = -angles[1];
+            mAngles[0] = -mAngles[0];
+            mAngles[1] = -mAngles[1];
         }
     }
 

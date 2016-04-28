@@ -305,6 +305,11 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
     }
 
     @Override
+    public int getOrientation() {
+        return mCameraInfoCache.sensorOrientation();
+    }
+
+    @Override
     public void openCamera() {
         // If API2 FULL mode is not available, display toast
         if (!mCameraInfoCache.isCamera2FullModeAvailable()) {
@@ -556,8 +561,8 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
         Log.v(TAG, "  Sent YUV1 image to ImageWriter.queueInputImage()");
         try {
             CaptureRequest.Builder b1 = mCameraDevice.createReprocessCaptureRequest(mLastTotalCaptureResult);
-            // Portrait.
-            b1.set(CaptureRequest.JPEG_ORIENTATION, 90);
+            // Todo: Read current orientation instead of just assuming device is in native orientation
+            b1.set(CaptureRequest.JPEG_ORIENTATION, mCameraInfoCache.sensorOrientation());
             b1.set(CaptureRequest.JPEG_QUALITY, (byte) 95);
             b1.set(CaptureRequest.NOISE_REDUCTION_MODE, mReprocessingNoiseMode);
             b1.set(CaptureRequest.EDGE_MODE, mReprocessingEdgeMode);

@@ -21,6 +21,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PointF;
 import android.graphics.RectF;
+import android.hardware.camera2.CameraCharacteristics;
 import android.util.AttributeSet;
 import android.view.View;
 
@@ -41,6 +42,7 @@ public class PreviewOverlay extends View {
     private int mAfState;
     private float mFovLargeDegrees;
     private float mFovSmallDegrees;
+    private int mFacing = CameraCharacteristics.LENS_FACING_BACK;
     float[] mAngles = new float[2];
 
     public PreviewOverlay(Context context, AttributeSet attrs) {
@@ -69,6 +71,14 @@ public class PreviewOverlay extends View {
         invalidate();
     }
 
+    /**
+     * Set the facing of the current camera, for correct coordinate mapping.
+     * One of the CameraCharacteristics.LENS_INFO_FACING_* constants
+     */
+    public void setFacing(int facing) {
+        mFacing = facing;
+    }
+
     public void show3AInfo(boolean show) {
         mShow3AInfo = show;
         this.setVisibility(VISIBLE);
@@ -76,7 +86,14 @@ public class PreviewOverlay extends View {
     }
 
     public void setGyroAngles(float[] angles) {
-        mAngles = angles;
+        if (mFacing == CameraCharacteristics.LENS_FACING_BACK) {
+            // Reverse sensor readout for front/external facing cameras
+            mAngles[0] = angles[0];
+            mAngles[1] = angles[1];
+        } else {
+            mAngles[0] = -angles[0];
+            mAngles[1] = -angles[1];
+        }
     }
 
     public void setFieldOfView(float fovLargeDegrees, float fovSmallDegrees) {
@@ -201,7 +218,6 @@ public class PreviewOverlay extends View {
             float focalLengthH = 0.5f * previewH / (float) Math.tan(Math.toRadians(mFovLargeDegrees) * 0.5);
             float focalLengthW = 0.5f * previewW / (float) Math.tan(Math.toRadians(mFovSmallDegrees) * 0.5);
             final double ANGLE_STEP = (float) Math.toRadians(10f);
-
             // Draw horizontal lines, with 10 degree spacing.
             double phase1 = mAngles[0] % ANGLE_STEP;
             for (double i = -5 * ANGLE_STEP + phase1; i < 5 * ANGLE_STEP; i += ANGLE_STEP) {

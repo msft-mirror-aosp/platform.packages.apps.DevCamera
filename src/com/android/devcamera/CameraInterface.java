@@ -33,6 +33,13 @@ public interface CameraInterface {
     float[] getFieldOfView();
 
     /**
+     * Get the camera sensor orientation relative to device native orientation
+     * Typically 90 or 270 for phones, 0 or 180 for tablets, though many tables are also
+     * portrait-native.
+     */
+    int getOrientation();
+
+    /**
      * Open the camera. Call startPreview() to actually see something.
      */
     void openCamera();

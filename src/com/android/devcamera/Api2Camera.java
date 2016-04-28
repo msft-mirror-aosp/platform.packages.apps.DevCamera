@@ -20,6 +20,7 @@ import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
@@ -155,13 +156,24 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
         });
 
         // Set initial Noise and Edge modes.
-        if (mCameraInfoCache.IS_BULLHEAD || mCameraInfoCache.IS_ANGLER) {
+        if (mCameraInfoCache.isHardwareLevelAtLeast(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_3)) {
             // YUV streams.
-            mCaptureNoiseIndex = 4 /*ZSL*/ % mCameraInfoCache.noiseModes.length;
-            mCaptureEdgeIndex = 3 /*ZSL*/ % mCameraInfoCache.edgeModes.length;
+            if (mCameraInfoCache.supportedModesContains(mCameraInfoCache.noiseModes,
+                    CameraCharacteristics.NOISE_REDUCTION_MODE_ZERO_SHUTTER_LAG)) {
+                mCaptureNoiseMode = CameraCharacteristics.NOISE_REDUCTION_MODE_ZERO_SHUTTER_LAG;
+            } else {
+                mCaptureNoiseMode = CameraCharacteristics.NOISE_REDUCTION_MODE_FAST;
+            }
+            if (mCameraInfoCache.supportedModesContains(mCameraInfoCache.edgeModes,
+                    CameraCharacteristics.EDGE_MODE_ZERO_SHUTTER_LAG)) {
+                mCaptureEdgeMode = CameraCharacteristics.EDGE_MODE_ZERO_SHUTTER_LAG;
+            } else {
+                mCaptureEdgeMode = CameraCharacteristics.EDGE_MODE_FAST;
+            }
+
             // Reprocessing.
-            mReprocessingNoiseIndex = 2 /*High Quality*/ % mCameraInfoCache.noiseModes.length;
-            mReprocessingEdgeIndex = 2 /*HIgh Quality*/ % mCameraInfoCache.edgeModes.length;
+            mReprocessingNoiseMode = CameraCharacteristics.NOISE_REDUCTION_MODE_HIGH_QUALITY;
+            mReprocessingEdgeMode = CameraCharacteristics.EDGE_MODE_HIGH_QUALITY;
         }
     }
 
@@ -279,7 +291,7 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
     }
 
     public boolean isReprocessingAvailable() {
-        return mCameraInfoCache.reprocessingAvailable();
+        return mCameraInfoCache.isYuvReprocessingAvailable();
     }
 
     @Override
@@ -288,13 +300,15 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
     }
 
     @Override
+    public float[] getFieldOfView() {
+        return mCameraInfoCache.getFieldOfView();
+    }
+
+    @Override
     public void openCamera() {
-        // If API2 FULL mode is not available, display toast, do nothing.
+        // If API2 FULL mode is not available, display toast
         if (!mCameraInfoCache.isCamera2FullModeAvailable()) {
             mMyCameraCallback.noCamera2Full();
-            if (!mCameraInfoCache.IS_NEXUS_6) {
-                return;
-            }
         }
 
         Log.v(TAG, "Opening camera " + mCameraInfoCache.getCameraId());
@@ -390,14 +404,14 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
                     " x " + mCameraInfoCache.getRawStreamSize().getHeight());
         }
 
-        if (USE_REPROCESSING_IF_AVAIL && mCameraInfoCache.reprocessingAvailable()) {
+        if (USE_REPROCESSING_IF_AVAIL && mCameraInfoCache.isYuvReprocessingAvailable()) {
             outputSurfaces.add(mJpegImageReader.getSurface());
             Log.v(TAG, "  .. added JPEG ImageReader " + mCameraInfoCache.getJpegStreamSize().getWidth() +
                     " x " + mCameraInfoCache.getJpegStreamSize().getHeight());
         }
 
         try {
-            if (USE_REPROCESSING_IF_AVAIL && mCameraInfoCache.reprocessingAvailable()) {
+            if (USE_REPROCESSING_IF_AVAIL && mCameraInfoCache.isYuvReprocessingAvailable()) {
                 InputConfiguration inputConfig = new InputConfiguration(mCameraInfoCache.getYuvStream1Size().getWidth(),
                         mCameraInfoCache.getYuvStream1Size().getHeight(), ImageFormat.YUV_420_888);
                 mCameraDevice.createReprocessableCaptureSession(inputConfig, outputSurfaces,
@@ -441,28 +455,27 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
     private boolean mCaptureYuv1 = false;
     private boolean mCaptureYuv2 = false;
     private boolean mCaptureRaw = false;
-    private int mCaptureNoiseIndex = CaptureRequest.NOISE_REDUCTION_MODE_OFF;
-    private int mCaptureEdgeIndex = CaptureRequest.EDGE_MODE_OFF;
+    private int mCaptureNoiseMode = CaptureRequest.NOISE_REDUCTION_MODE_FAST;
+    private int mCaptureEdgeMode = CaptureRequest.EDGE_MODE_FAST;
     private boolean mCaptureFace = false;
     // Variables to hold reprocessing state.
-    private int mReprocessingNoiseIndex = CaptureRequest.NOISE_REDUCTION_MODE_OFF;
-    private int mReprocessingEdgeIndex = CaptureRequest.EDGE_MODE_OFF;
-
+    private int mReprocessingNoiseMode = CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY;
+    private int mReprocessingEdgeMode = CaptureRequest.EDGE_MODE_HIGH_QUALITY;
 
     public void setCaptureFlow(Boolean yuv1, Boolean yuv2, Boolean raw10, Boolean nr, Boolean edge, Boolean face) {
         if (yuv1 != null) mCaptureYuv1 = yuv1;
         if (yuv2 != null) mCaptureYuv2 = yuv2;
         if (raw10 != null) mCaptureRaw = raw10 && RAW_STREAM_ENABLE;
         if (nr) {
-            mCaptureNoiseIndex = ++mCaptureNoiseIndex % mCameraInfoCache.noiseModes.length;
+            mCaptureNoiseMode = getNextMode(mCaptureNoiseMode, mCameraInfoCache.noiseModes);
         }
         if (edge) {
-            mCaptureEdgeIndex = ++mCaptureEdgeIndex % mCameraInfoCache.edgeModes.length;
+            mCaptureEdgeMode = getNextMode(mCaptureEdgeMode, mCameraInfoCache.edgeModes);
         }
         if (face != null) mCaptureFace = face;
         mMyCameraCallback.setNoiseEdgeText(
-                "NR " + noiseModeToString(mCameraInfoCache.noiseModes[mCaptureNoiseIndex]),
-                "Edge " + edgeModeToString(mCameraInfoCache.edgeModes[mCaptureEdgeIndex])
+                "NR " + noiseModeToString(mCaptureNoiseMode),
+                "Edge " + edgeModeToString(mCaptureEdgeMode)
         );
 
         if (mCurrentCaptureSession != null) {
@@ -472,14 +485,14 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
 
     public void setReprocessingFlow(Boolean nr, Boolean edge) {
         if (nr) {
-            mReprocessingNoiseIndex = ++mReprocessingNoiseIndex % mCameraInfoCache.noiseModes.length;
+            mReprocessingNoiseMode = getNextMode(mReprocessingNoiseMode, mCameraInfoCache.noiseModes);
         }
         if (edge) {
-            mReprocessingEdgeIndex = ++mReprocessingEdgeIndex % mCameraInfoCache.edgeModes.length;
+            mReprocessingEdgeMode = getNextMode(mReprocessingEdgeMode, mCameraInfoCache.edgeModes);
         }
         mMyCameraCallback.setNoiseEdgeTextForReprocessing(
-                "NR " + noiseModeToString(mCameraInfoCache.noiseModes[mReprocessingNoiseIndex]),
-                "Edge " + edgeModeToString(mCameraInfoCache.edgeModes[mReprocessingEdgeIndex])
+                "NR " + noiseModeToString(mReprocessingNoiseMode),
+                "Edge " + edgeModeToString(mReprocessingEdgeMode)
         );
     }
 
@@ -496,11 +509,11 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
                 b1.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
             }
 
-            b1.set(CaptureRequest.NOISE_REDUCTION_MODE, mCameraInfoCache.noiseModes[mCaptureNoiseIndex]);
-            b1.set(CaptureRequest.EDGE_MODE, mCameraInfoCache.edgeModes[mCaptureEdgeIndex]);
+            b1.set(CaptureRequest.NOISE_REDUCTION_MODE, mCaptureNoiseMode);
+            b1.set(CaptureRequest.EDGE_MODE, mCaptureEdgeMode);
             b1.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, mCaptureFace ? mCameraInfoCache.bestFaceDetectionMode() : CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
 
-            Log.v(TAG, "  .. NR=" + mCaptureNoiseIndex + "  Edge=" + mCaptureEdgeIndex + "  Face=" + mCaptureFace);
+            Log.v(TAG, "  .. NR=" + mCaptureNoiseMode + "  Edge=" + mCaptureEdgeMode + "  Face=" + mCaptureFace);
 
             if (mCaptureYuv1) {
                 b1.addTarget(mYuv1ImageReader.getSurface());
@@ -546,8 +559,8 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
             // Portrait.
             b1.set(CaptureRequest.JPEG_ORIENTATION, 90);
             b1.set(CaptureRequest.JPEG_QUALITY, (byte) 95);
-            b1.set(CaptureRequest.NOISE_REDUCTION_MODE, mCameraInfoCache.noiseModes[mReprocessingNoiseIndex]);
-            b1.set(CaptureRequest.EDGE_MODE, mCameraInfoCache.edgeModes[mReprocessingEdgeIndex]);
+            b1.set(CaptureRequest.NOISE_REDUCTION_MODE, mReprocessingNoiseMode);
+            b1.set(CaptureRequest.EDGE_MODE, mReprocessingEdgeMode);
             b1.addTarget(mJpegImageReader.getSurface());
             mCurrentCaptureSession.capture(b1.build(), mReprocessingCaptureCallback, mOpsHandler);
             mReprocessingRequestNanoTime = System.nanoTime();
@@ -775,6 +788,32 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
      * UTILITY FUNCTIONS *
      *********************/
 
+    /**
+     * Return the next mode after currentMode in supportedModes, wrapping to
+     * start of mode list if currentMode is last.  Returns currentMode if it is not found in
+     * supportedModes.
+     *
+     * @param currentMode
+     * @param supportedModes
+     * @return next mode after currentMode in supportedModes
+     */
+    private int getNextMode(int currentMode, int[] supportedModes) {
+        boolean getNext = false;
+        for (int m : supportedModes) {
+            if (getNext) {
+                return m;
+            }
+            if (m == currentMode) {
+                getNext = true;
+            }
+        }
+        if (getNext) {
+            return supportedModes[0];
+        }
+        // Can't find mode in list
+        return currentMode;
+    }
+
     private static String edgeModeToString(int mode) {
         switch (mode) {
             case CaptureRequest.EDGE_MODE_OFF:
@@ -783,12 +822,11 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
                 return "FAST";
             case CaptureRequest.EDGE_MODE_HIGH_QUALITY:
                 return "HiQ";
-            case 3:
+            case CaptureRequest.EDGE_MODE_ZERO_SHUTTER_LAG:
                 return "ZSL";
         }
         return Integer.toString(mode);
     }
-
 
     private static String noiseModeToString(int mode) {
         switch (mode) {
@@ -798,9 +836,9 @@ public class Api2Camera implements CameraInterface, SurfaceTexture.OnFrameAvaila
                 return "FAST";
             case CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY:
                 return "HiQ";
-            case 3:
+            case CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL:
                 return "MIN";
-            case 4:
+            case CaptureRequest.NOISE_REDUCTION_MODE_ZERO_SHUTTER_LAG:
                 return "ZSL";
         }
         return Integer.toString(mode);

@@ -28,6 +28,11 @@ public interface CameraInterface {
     Size getPreviewSize();
 
     /**
+     * Get camera field of view, in degrees. Entry 0 is horizontal, entry 1 is vertical FOV.
+     */
+    float[] getFieldOfView();
+
+    /**
      * Open the camera. Call startPreview() to actually see something.
      */
     void openCamera();

@@ -20,4 +20,7 @@ android_app {
     sdk_version: "current",
     min_sdk_version: "21",
     srcs: ["src/**/*.java"],
+    lint: {
+        baseline_filename: "lint-baseline.xml",
+    },
 }
